@@ -4,7 +4,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Jenkins Docker Demo - Build Successful!"
+    return "Jenkins Docker Demo - Version 2 Deployed Successful!"
 
 @app.route("/health")
 def health():
