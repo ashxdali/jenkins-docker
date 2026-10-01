@@ -1,9 +1,15 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     environment {
         IMAGE_NAME = 'ashxdali/jenkins-docker'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        TEST_CONTAINER = "jenkins-review-${BUILD_NUMBER}"
     }
 
     stages {
@@ -26,7 +32,7 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    pip3 install flask pytest --break-system-packages
+                    pip3 install -r requirements.txt --break-system-packages
                     pytest
                 '''
             }
@@ -37,6 +43,39 @@ pipeline {
                 sh '''
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                     docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                sh '''
+                    trivy image --severity HIGH,CRITICAL --exit-code 0 ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Deploy & Verify') {
+            steps {
+                sh '''
+                    docker rm -f ${TEST_CONTAINER} 2>/dev/null || true
+
+                    docker run -d \
+                        --name ${TEST_CONTAINER} \
+                        --security-opt=no-new-privileges:true \
+                        --cap-drop=ALL \
+                        -p 5002:5000 \
+                        ${IMAGE_NAME}:${IMAGE_TAG}
+
+                    sleep 5
+
+                    echo "Checking application health..."
+                    curl --fail http://localhost:5002/health
+
+                    echo "Checking container user..."
+                    docker exec ${TEST_CONTAINER} whoami | grep -q appuser
+
+                    echo "Deployment verification successful."
                 '''
             }
         }
@@ -52,8 +91,10 @@ pipeline {
                 ]) {
                     sh '''
                         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
                         docker push ${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${IMAGE_NAME}:latest
+
                         docker logout
                     '''
                 }
@@ -62,8 +103,12 @@ pipeline {
     }
 
     post {
+        always {
+            sh 'docker rm -f ${TEST_CONTAINER} 2>/dev/null || true'
+        }
+
         success {
-            echo 'Jenkins pipeline completed successfully and Docker image was pushed.'
+            echo 'Production readiness pipeline completed successfully.'
         }
 
         failure {
@@ -71,3 +116,58 @@ pipeline {
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
